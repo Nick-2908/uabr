@@ -56,6 +56,7 @@ noise floor (0.037 / 0.157 vs 0.040 for never-seen), leaving two usable exposure
 | C7 | `knows` labelled from the deployed delegation format, not a pretraining-style cloze | v1 labelled ANSWER off a 0.733 cloze score while real QA accuracy on those facts was 0.222 |
 | C8 | New Phase 3.5: format adaptation (Dolly/Alpaca + QA facts from `replay_construction` only) | v1 had no stage between pretraining and delegation. Also makes the Phase 5 interference pilot meaningful — the policy that can be forgotten has to exist first |
 | C9 | `preflight_gate.py`, asserted at 1/10 scale before any full run | v1 burned ~5 GPU-h and reached Phase 4 before noticing always-call was optimal. `QUICK=True` only checked that code *ran*, never that the metric was non-degenerate |
+| C10 | Graded per-fact reward (`fact_benefit` = mean EM over a fact's `q_main` paraphrases); `replay_construction` facts now carry all 6 paraphrases instead of 2; new gate target `graded_interior_rate ≥ 0.15` | **v1's degeneracy in a weaker form, not yet fixed by C1–C9.** Per-prompt EM is binary, so `bᵢ ∈ {−1,0,+1}` and `\|bᵢ\| ∈ {0,1}` — making UABR's `sᵢ = exp(−mᵢ/τ)·\|bᵢ\|` exactly BPR's `exp(−mᵢ/τ)` masked to the prompts where the two actions disagree. The multiplication would do no ranking work and the headline UABR-vs-BPR comparison could not come out different. Grading `R` over paraphrases restores a varying `\|b\|`. Per-prompt binary `reward_*` is untouched, so the primary endpoint (held-out EM at a fixed call rate) is unchanged |
 
 Unchanged and reused: the model, the pretraining loop (full-state checkpoint/resume,
 `--max_minutes`, `--mirror_dir`, FP16+GradScaler), the exposure ledger and audits, the
@@ -70,6 +71,7 @@ single-prediction-table design, the shared fine-tuning loop, the paired bootstra
 | call-beneficial rate | 0.932 | 0.30 – 0.60 |
 | `oracle − always_call` | 0.000 | ≥ 0.08 |
 | routing AUROC | 0.612 | ≥ 0.75 |
+| `graded_interior_rate` (share with `0 < \|bᵢ\| < 1`) | 0.000 (binary by construction) | ≥ 0.15 |
 
 ## Status
 
@@ -92,6 +94,22 @@ its `format_adapted.pt` is the `--base` for `label_knowledge.py` and `train_dele
 `audit_ledger.py` gained audit 7 (statement+QA counts sum to the tier, withheld have none, QA share ≈
 `QA_FRACTION`). Full suite **25/25 pass** on CPU (baseline was 24). `D:\afml` is now writable, so the
 project lives at `D:\afml\uabr` (the `C:\Users\ASUS\uabr` copy was never created).
+
+**Done (2026-11-03):** repo is now under git (first commit = the v2 tree; v1 itself is not
+reconstructable locally, it lives at `github.com/Nick-2908/v1`). C10 — `metrics.add_graded_reward`
+and `metrics.graded_interior_rate`, called from both `predict.py` and `preflight_gate.py` so the
+prediction table and the gate cannot disagree; `build_facts.py` gives `replay_construction` all 6
+`q_main` paraphrases; `graded_interior_rate` added to `TARGETS` and to `summarize`. Suite **27/27
+pass** on CPU (baseline was 25): the two new tests assert that graded `|b|` has interior mass, that
+binary per-prompt benefit has none, and that the end-to-end `dev_predictions.parquet` carries the
+four new columns.
+
+**Open design risk, not yet addressed:** Phase 5's go/no-go is a single point of failure late in the
+pipeline — the whole six-condition study is conditional on SFT measurably degrading routing in a way
+threshold recalibration cannot repair. Worth running a cheap interference check on the *pilot*
+checkpoint, before the ~5 GPU-h production pretrain, rather than after. Phases 5–7 also have no
+scripts yet (no replay selector, no paired-bootstrap evaluation driver); that is the largest block of
+unwritten work and it is where the contribution actually lives.
 
 **Next, in order:** wire Phase 3.5 into the Kaggle flow (run `train_format_adapt.py` after pretrain,
 then point `label_knowledge.py`/`train_delegation.py` `--base` at `format_adapted.pt`) →

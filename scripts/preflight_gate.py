@@ -46,6 +46,11 @@ TARGETS = {
     "oracle_gap": (0.08, None),           # acc_oracle - acc_always_call
     "answer_wins_rate": (0.05, None),     # share with b_i < 0: the two-sided benefit v1 lacked entirely
     "auroc": (0.75, None),
+    # Share with 0 < |b_i| < 1 on the graded per-fact reward. Below this floor |b| is effectively
+    # binary, so UABR's s = exp(-m/tau)*|b| degenerates into boundary-only BPR with the b = 0
+    # prompts masked out and the two conditions stop being different rules. Same class of
+    # degeneracy that killed v1 (|b| constant), caught before the GPU spend this time.
+    "graded_interior_rate": (0.15, None),
 }
 MAX_WITHHELD = 0.12                       # >= this share is call-necessary by construction; endpoint is 10%
 PROD_TIERS, PROD_WEIGHTS, PROD_P_EXPOSED = [40, 120, 300], [0.35, 0.35, 0.30], 0.90
@@ -107,7 +112,7 @@ def base_table(model, tok, prompts, ret, batch_size=256, max_new=12):
                      "answer_text": txt, "gold": p["answer"], "reward_answer": ra, "reward_call": rc,
                      "benefit": rc - ra, "call_score": float(-c) if np.isfinite(c) else 1e9,
                      "predicted_action": "ANSWER", "both_fail": int(ra == 0 and rc == 0)})
-    return pd.DataFrame(rows)
+    return M.add_graded_reward(pd.DataFrame(rows))
 
 
 def project(df, tiers, weights, p_exposed, n=5000, seed=0):
@@ -136,7 +141,8 @@ def task_checks(df, n_boot=500):
     vals = {"r_call": s["acc_always_call"], "r_answer": s["acc_always_answer"],
             "call_beneficial_rate": s["call_beneficial_rate"],
             "oracle_gap": s["acc_oracle"] - s["acc_always_call"],
-            "answer_wins_rate": float((df.benefit < 0).mean()), "auroc": s["auroc"]}
+            "answer_wins_rate": float((df.benefit < 0).mean()), "auroc": s["auroc"],
+            "graded_interior_rate": M.graded_interior_rate(df)}
     ci = M.bootstrap_ci(df, lambda d: M.auroc(d.call_score, d.benefit > 0), n_boot=n_boot)
     checks = {k: in_band(v, TARGETS[k]) for k, v in vals.items()}
     return vals, checks, {"auroc_95ci": ci, "budget_10": s["budget_10"], "acc_oracle": s["acc_oracle"]}

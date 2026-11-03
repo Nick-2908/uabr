@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from src.data import formats
+from src.evaluation import metrics
 from src.evaluation.generate import greedy, next_token_logprobs
 
 
@@ -58,7 +59,7 @@ def predict(model, tok, prompts, evidence, run_id="", checkpoint="", tokenizer_h
             "model_checkpoint": checkpoint, "tokenizer_hash": tokenizer_hash, "evidence_index_hash": evidence.version,
             **em,  # retrieved_doc_ids, evidence_noisy, gold_retrieved, gold_rank
         })
-    df = pd.DataFrame(rows)
+    df = metrics.add_graded_reward(pd.DataFrame(rows))  # graded |b| for Phase 6 replay selection
     n = max(len(prompts), 1)
     df.attrs["latency_ms_per_prompt"] = {"route": 1000 * (t_route - t0) / n, "answer": 1000 * (t_ans - t_route) / n,
                                          "call": 1000 * (t_call - t_ans) / n}

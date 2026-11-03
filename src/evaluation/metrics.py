@@ -7,6 +7,46 @@ import numpy as np
 import pandas as pd
 
 
+# ---------------------------------------------------------------- graded reward (for replay selection)
+def add_graded_reward(df):
+    """Add per-fact graded rewards in place and return df.
+
+    Per-prompt EM is binary, so benefit = reward_call - reward_answer lands in {-1, 0, +1} and
+    |benefit| in {0, 1}. UABR scores replay examples by s = exp(-m/tau) * |b|, so with a binary |b|
+    that score is just boundary-only BPR's exp(-m/tau) masked to the prompts where the two actions
+    disagree -- the multiplication contributes no ranking information and UABR cannot be
+    distinguished from BPR. That is the v1 failure in a weaker form (v1 had |b| constant at 1; the
+    binary form is |b| constant at 1 *or* 0).
+
+    Averaging EM over a fact's question paraphrases estimates expected EM instead, so |b| is graded.
+    `replay_construction` facts carry all 6 q_main paraphrases for exactly this reason, which puts
+    |fact_benefit| on a 7-level grid there.
+
+    The per-prompt binary reward_answer / reward_call columns are left untouched: the primary
+    endpoint (held-out EM at a fixed call rate) and the harmful-answer / wasteful-call rates in
+    outcome() are all specified on hard EM.
+    """
+    g = df.groupby("fact_id")
+    df["fact_n_prompts"] = g.prompt_id.transform("size")
+    df["fact_reward_answer"] = g.reward_answer.transform("mean")
+    df["fact_reward_call"] = g.reward_call.transform("mean")
+    df["fact_benefit"] = df.fact_reward_call - df.fact_reward_answer
+    return df
+
+
+def graded_interior_rate(df):
+    """Share of prompts with 0 < |fact_benefit| < 1 -- the facts the model partly knows.
+
+    This is the share of the replay pool on which UABR's |b| factor carries information that BPR
+    does not already have. Near 0 means |b| has collapsed back to binary and the two conditions are
+    the same rule; the preflight gate fails on it.
+    """
+    if "fact_benefit" not in df.columns:
+        return float("nan")
+    b = df.fact_benefit.abs().to_numpy()
+    return float(((b > 1e-9) & (b < 1 - 1e-9)).mean())
+
+
 # ---------------------------------------------------------------- ranking
 def auroc(scores, y):
     """Mann-Whitney AUROC with tie handling; NaN if only one class present."""
@@ -106,6 +146,8 @@ def summarize(df, budgets=(0.05, 0.10, 0.20), dev_thresholds=None):
         "default_decision": outcome(df, df.predicted_action == "CALL"),
         "brier": brier(df), "ece": ece(df), "aurc": aurc(df),
         "both_fail_rate": float(df.both_fail.mean()),
+        # diagnostic only: how much of the replay pool UABR's |b| factor can rank that BPR cannot
+        "graded_interior_rate": graded_interior_rate(df),
     }
     for b in budgets:
         out[f"budget_{int(round(b * 100))}"] = outcome(df, route_top_fraction(df.call_score, b))

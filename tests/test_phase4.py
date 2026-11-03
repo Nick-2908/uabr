@@ -80,8 +80,11 @@ def test_delegation_outputs(delegation_run):
     df = pd.read_parquet(out / "dev_predictions.parquet")
     need = {"prompt_id", "fact_id", "logp_answer", "logp_call", "call_score", "predicted_action", "answer_text",
             "reward_answer", "evidence_doc_id", "call_answer_text", "reward_call", "benefit", "harmful_answer",
-            "wasteful_call", "both_fail", "evidence_index_hash"}
+            "wasteful_call", "both_fail", "evidence_index_hash",
+            # graded per-fact reward for Phase 6 replay selection (keeps UABR distinct from BPR)
+            "fact_n_prompts", "fact_reward_answer", "fact_reward_call", "fact_benefit"}
     assert need <= set(df.columns)
+    assert ((df.fact_benefit >= -1) & (df.fact_benefit <= 1)).all()
     assert set(df.split) == {"dev"}
     rep = json.load(open(out / "gate_report.json", encoding="utf-8"))
     assert set(rep["checks"]) == {"both_actions_learned", "useful_ranking", "direct_path_works", "call_path_works"}
@@ -207,3 +210,48 @@ def test_preflight_projection_matches_production_mix():
     assert 10 not in share.index and abs(share[0] - 0.10) < 1e-3 and abs(share[300] - 0.27) < 1e-3
     with pytest.raises(AssertionError):
         pg.project(df, [60, 120, 300], [0.35, 0.35, 0.30], 0.90)
+
+
+def test_graded_reward_is_not_binary():
+    """UABR's |b| must carry information BPR does not already have (docs/v2_design.md section 1).
+
+    Per-prompt EM is binary, so benefit in {-1, 0, +1} and |benefit| in {0, 1}; a binary |b| makes
+    s = exp(-m/tau)*|b| the boundary-only BPR rule masked to the disagreeing prompts. The graded
+    per-fact reward has to put mass strictly between 0 and 1.
+    """
+    # fact A: answer works on 1 of 2 paraphrases, call on both -> |b| = 0.5 (interior)
+    # fact B: both actions work everywhere -> |b| = 0 (UABR and BPR both ignore it)
+    # fact C: answer never works, call always works -> |b| = 1 (BPR ranks it too)
+    df = pd.DataFrame({
+        "fact_id":       ["A", "A", "B", "B", "C", "C"],
+        "prompt_id":     ["a1", "a2", "b1", "b2", "c1", "c2"],
+        "reward_answer": [1, 0, 1, 1, 0, 0],
+        "reward_call":   [1, 1, 1, 1, 1, 1],
+    })
+    M.add_graded_reward(df)
+    assert df.set_index("prompt_id").fact_benefit.round(6).to_dict() == {
+        "a1": 0.5, "a2": 0.5, "b1": 0.0, "b2": 0.0, "c1": 1.0, "c2": 1.0}
+    assert df.fact_n_prompts.tolist() == [2, 2, 2, 2, 2, 2]
+    # the per-prompt binary columns must be untouched: they define the primary endpoint
+    assert df.reward_answer.tolist() == [1, 0, 1, 1, 0, 0]
+
+    assert abs(M.graded_interior_rate(df) - 2 / 6) < 1e-9
+    # binary per-prompt benefit has no interior mass at all -- this is the degenerate case
+    binary = df.assign(fact_benefit=df.reward_call - df.reward_answer)
+    assert M.graded_interior_rate(binary) == 0.0
+    # and a table without the graded columns reports NaN rather than crashing
+    assert np.isnan(M.graded_interior_rate(df.drop(columns=["fact_benefit"])))
+
+
+def test_replay_pool_has_all_main_paraphrases(built):
+    """`replay_construction` is the pool Phase 5-6 draws from, so each of its facts needs enough
+    paraphrases for a graded |b|. Two would quantise it to {0, .5, 1}."""
+    from src.data.build_facts import MAIN_FAMILY
+    rows = [json.loads(l) for l in open(Path(built) / "facts" / "prompts.jsonl", encoding="utf-8")]
+    rc = pd.DataFrame([r for r in rows if r["split"] == "replay_construction"])
+    assert not rc.empty, "fixture built no replay_construction prompts"
+    per_fact = rc.groupby("fact_id").size()
+    assert set(per_fact.unique()) == {len(MAIN_FAMILY)}, f"expected {len(MAIN_FAMILY)} prompts/fact, got {sorted(per_fact.unique())}"
+    assert (rc.template_family == "q_main").all(), "q_alt must stay held out for evaluation"
+    # distinct paraphrases, not the same template repeated
+    assert (rc.groupby("fact_id").template_id.nunique() == len(MAIN_FAMILY)).all()
