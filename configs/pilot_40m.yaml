@@ -1,0 +1,10 @@
+# configs/pilot_40m.yaml
+output_dir: runs/pilot_40m
+total_steps: 1526
+warmup_steps: 50
+batch_size: 65536
+lr: 3.0e-4
+weight_decay: 0.1
+grad_clip: 1.0
+log_interval: 10
+save_interval: 500
