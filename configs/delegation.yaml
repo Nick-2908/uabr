@@ -1,0 +1,25 @@
+# Phase 4: teach <ANSWER> vs <CALL> on top of base_v1 .
+# Labels: ANSWER if the base model already knows the fact (cloze probe), else CALL (declared deviation).
+finetune:
+  seed: 2026
+  precision: fp16
+  epochs: 3
+  batch_size: 64
+  lr: 1.0e-4
+  min_lr: 1.0e-5
+  warmup_steps: 50
+  schedule: cosine
+  weight_decay: 0.01
+  betas: [0.9, 0.95]
+  grad_clip: 1.0
+  log_every_steps: 100
+  eval_each_epoch: true
+data:
+  answer_frac: 0.5          # each epoch: all ANSWER examples + CALL examples resampled to a 50/50 mix
+  dev_eval_prompts: 2000    # dev subset scored after every epoch (fixed seed); full dev at the end
+  select_metric: auroc      # keep the epoch with the best dev routing AUROC (never a test metric);
+                            # falls back to AUROC against the knowledge labels if the routing AUROC is undefined
+quick:
+  max_train_examples: 3000
+  epochs: 1
+  dev_eval_prompts: 300

@@ -1,0 +1,30 @@
+# Same 40M model and code path, synthetic data. For the Phase 1 GPU smoke/throughput gate.
+model:
+  vocab_size: 12000
+  max_seq_len: 512
+  n_layers: 8
+  d_model: 512
+  n_heads: 8
+  d_ff: 2048
+  dropout: 0.0
+  rope_theta: 10000.0
+  tie_embeddings: true
+training:
+  precision: fp16
+  seed: 2026
+  micro_batch_size: 32
+  grad_accum_steps: 4
+  total_steps: 1000
+  lr: 6.0e-4
+  min_lr: 6.0e-5
+  warmup_steps: 50
+  weight_decay: 0.1
+  betas: [0.9, 0.95]
+  gradient_clip_norm: 1.0
+  checkpoint_every_steps: 100
+  validate_every_steps: 100
+  log_every_steps: 10
+  val_batches: 5
+io:
+  data_dir: data/processed/synthetic
+  output_dir: runs/smoke_pretrain

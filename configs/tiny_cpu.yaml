@@ -1,0 +1,30 @@
+# Tiny model for CPU tests only. Never used for results.
+model:
+  vocab_size: 12000
+  max_seq_len: 128   # v2 CALL examples carry 3 retrieved records (~110 tokens)
+  n_layers: 2
+  d_model: 64
+  n_heads: 4
+  d_ff: 256
+  dropout: 0.0
+  rope_theta: 10000.0
+  tie_embeddings: true
+training:
+  precision: fp16
+  seed: 2026
+  micro_batch_size: 8
+  grad_accum_steps: 2
+  total_steps: 200
+  lr: 3.0e-3
+  min_lr: 3.0e-4
+  warmup_steps: 10
+  weight_decay: 0.1
+  betas: [0.9, 0.95]
+  gradient_clip_norm: 1.0
+  checkpoint_every_steps: 20
+  validate_every_steps: 20
+  log_every_steps: 10
+  val_batches: 2
+io:
+  data_dir: data/processed/synthetic
+  output_dir: runs/tiny_cpu

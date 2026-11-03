@@ -1,0 +1,12 @@
+# torch is preinstalled on Colab/Kaggle; do not reinstall it there.
+numpy
+pyyaml
+pytest
+tokenizers
+datasets
+pandas
+pyarrow
+scikit-learn
+scipy
+matplotlib
+tqdm

@@ -1,0 +1,29 @@
+# Phase 3.5: format adaptation (v2 change C8).
+# Teach the instruction / QA answer format on top of the pretrained base, BEFORE delegation (Phase 4),
+# so the ANSWER path works when a fact is asked as a question (v1 collapsed here: cloze EM 0.747 but
+# QA-format EM 0.165). Data = Dolly/Alpaca SFT + QA-format facts from replay_construction entities only
+# (dev and delegation_train facts are left to pretraining alone, so their routing measurement stays clean;
+# replay_construction is the pool the Phase 5-6 replay study draws from, so a policy exists to preserve).
+finetune:
+  seed: 2026
+  precision: fp16
+  epochs: 2
+  batch_size: 64
+  lr: 1.0e-4
+  min_lr: 1.0e-5
+  warmup_steps: 50
+  schedule: cosine
+  weight_decay: 0.01
+  betas: [0.9, 0.95]
+  grad_clip: 1.0
+  log_every_steps: 100
+  eval_each_epoch: true
+data:
+  fact_frac: 0.30           # share of each epoch that is QA-fact examples; the rest is Dolly/Alpaca SFT
+  dev_eval_prompts: 1000    # dev subset scored for QA EM after every epoch (fixed seed)
+  q_templates: 2            # q_main templates per replay_construction fact (q_alt stays held out for eval)
+  select_metric: dev_qa_em  # keep the epoch with the best dev QA exact-match (never a test metric)
+quick:
+  max_train_examples: 2000
+  epochs: 1
+  dev_eval_prompts: 200

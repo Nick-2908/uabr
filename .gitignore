@@ -1,0 +1,11 @@
+data/raw/
+data/interim/
+data/processed/
+runs/
+*.pt
+*.bin
+__pycache__/
+.venv/
+.pytest_cache/
+DATA/
+*.log

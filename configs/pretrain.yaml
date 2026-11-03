@@ -1,0 +1,31 @@
+# Full 40M pretraining config (handbook sections 7, 12, 14).
+# 1B tokens / (32 x 4 x 512 = 65,536 tokens per step) = 15,259 steps.
+model:
+  vocab_size: 12000
+  max_seq_len: 512
+  n_layers: 8
+  d_model: 512
+  n_heads: 8
+  d_ff: 2048
+  dropout: 0.0
+  rope_theta: 10000.0
+  tie_embeddings: true
+training:
+  precision: fp16
+  seed: 2026
+  micro_batch_size: 32
+  grad_accum_steps: 4
+  total_steps: 15260          # sets the LR schedule; --max_steps only sets where THIS session stops
+  lr: 6.0e-4
+  min_lr: 6.0e-5
+  warmup_steps: 500
+  weight_decay: 0.1
+  betas: [0.9, 0.95]
+  gradient_clip_norm: 1.0
+  checkpoint_every_steps: 500
+  validate_every_steps: 500
+  log_every_steps: 100
+  val_batches: 20
+io:
+  data_dir: data/processed/pretrain      # train.bin / val.bin (uint16)
+  output_dir: runs/pretrain_40m

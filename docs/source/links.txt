@@ -1,0 +1,7 @@
+notebooks in notebooks folder:
+https://www.kaggle.com/code/prajwalashetty13/uabr-build-data
+https://www.kaggle.com/code/prajwalashetty13/uabr-pretrain
+https://www.kaggle.com/code/prajwalashetty13/notebook070d75f199
+
+
+GitHub link:(version 1 of the project):https://github.com/Nick-2908/v1
